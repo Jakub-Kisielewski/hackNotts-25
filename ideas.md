@@ -8,3 +8,5 @@
 * virtual wardrobe aca
 * upload photo of urself and allow you to swipe clothing items from a store and try it on online
 * ai usage - outfit recommendations / recommendations to a piece you found and like
+
+aa
