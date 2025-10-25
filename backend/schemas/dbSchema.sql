@@ -1,54 +1,66 @@
 -- Users
 CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  name TEXT,
-  email TEXT UNIQUE,
-  password TEXT
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    email TEXT UNIQUE,
+    password TEXT
 );
 
 -- Products
 CREATE TABLE products (
-  id SERIAL PRIMARY KEY,
-  label TEXT,
-  company TEXT,
-  price NUMERIC,
-  websiteURL TEXT,
-  imageURL TEXT,
-  sizes TEXT[],
-  tags TEXT[]
+    id SERIAL PRIMARY KEY,
+    label TEXT,
+    company TEXT,
+    price NUMERIC,
+    websiteURL TEXT,
+    imageURL TEXT,
+    sizes TEXT[],
+    tags TEXT[]
 );
 
 -- Likes
 CREATE TABLE likes (
-  id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES users(id),
-  product_id INT REFERENCES products(id),
-  created_at TIMESTAMP DEFAULT NOW()
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id),
+    product_id INT REFERENCES products(id),
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Shares
 CREATE TABLE shares (
-  id SERIAL PRIMARY KEY,
-  sender_id INT REFERENCES users(id),
-  receiver_id INT REFERENCES users(id),
-  product_id INT REFERENCES products(id),
-  created_at TIMESTAMP DEFAULT NOW()
+    id SERIAL PRIMARY KEY,
+    sender_id INT REFERENCES users(id),
+    receiver_id INT REFERENCES users(id),
+    product_id INT REFERENCES products(id),
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Cart
 CREATE TABLE cart (
-  id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES users(id),
-  product_id INT REFERENCES products(id),
-  quantity INT DEFAULT 1
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id),
+    product_id INT REFERENCES products(id),
+    quantity INT DEFAULT 1
 );
 
 -- Receipts
 CREATE TABLE receipts (
-  id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES users(id),
-  total NUMERIC,
-  items JSONB,
-  created_at TIMESTAMP DEFAULT NOW()
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id),
+    total NUMERIC,
+    items JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
 );
+
+
+CREATE TABLE sessions (
+  sid varchar NOT NULL COLLATE "default",
+  sess json NOT NULL,
+  expire timestamp(6) NOT NULL
+)
+WITH (OIDS=FALSE);
+
+ALTER TABLE sessions ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid");
+
+CREATE INDEX "IDX_session_expire" ON sessions ("expire");
 
