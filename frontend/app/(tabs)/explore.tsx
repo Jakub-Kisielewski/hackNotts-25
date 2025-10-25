@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   avatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
   textContainer: { flex: 1 },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
-  username: { fontWeight: '600', fontSize: 16 },
+  username: { fontWeight: '600', fontSize: 16 ,color:'#fff'},
   timestamp: { fontSize: 12, color: '#fff' },
   lastMessage: { fontSize: 14, color: '#fff' },
   unread: { fontWeight: '700', color: '#fff' },
