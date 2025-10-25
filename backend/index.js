@@ -21,7 +21,22 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/", async (req, res) => {
-	res.send("hi")
+	res.send("main page of this thing");
+});
+app.post("/item", async (req, res) => {
+
+	res.send("not allowed to add item");
+});
+app.get("/feed", async (req, res) => {
+	res.json({ "item1": "item2" });
+});
+
+app.post("/signup", async (req, res) => {
+	// store to database
+});
+
+app.post("/login", async (req, res) => {
+	// return jwt
 });
 
 app.listen(port, () => {
