@@ -1,20 +1,22 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, FlatList, Dimensions, Pressable } from 'react-native';
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import { faHeart as faHeartRegular } from '@fortawesome/free-regular-svg-icons';
 import { faHeart as faHeartSolid } from '@fortawesome/free-solid-svg-icons';
-
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
+const { height } = Dimensions.get('window');
 
-export default function HomeScreen() {
+// Dummy pages just to show scroll working
+const PAGES = Array.from({ length: 5 }, (_, i) => ({ id: `${i + 1}` }));
+
+const Page = ({ index }: { index: number }) => {
   const [liked, setLiked] = useState(false);
-
   const toggleHeart = () => setLiked(!liked);
 
   return (
-    <>
+    <View style={styles.page}>
       <Pressable style={styles.imageContainer} onPress={toggleHeart}>
         <ThemedText type="title">Product Image</ThemedText>
       </Pressable>
@@ -34,17 +36,42 @@ export default function HomeScreen() {
         <ThemedText type="default">Price: </ThemedText>
         <ThemedText type="default">URL: </ThemedText>
       </ThemedView>
-    </>
+    </View>
+  );
+};
+
+export default function HomeScreen() {
+  return (
+    <FlatList
+      data={PAGES}
+      keyExtractor={(item) => item.id}
+      renderItem={({ index }) => <Page index={index} />}
+      pagingEnabled
+      showsVerticalScrollIndicator={false}
+      snapToAlignment="start"
+      decelerationRate="fast"
+      snapToInterval={height}
+      getItemLayout={(_, index) => ({
+        length: height,
+        offset: height * index,
+        index,
+      })}
+    />
   );
 }
 
 const styles = StyleSheet.create({
+  page: {
+    height: height,
+    width: '100%',
+    backgroundColor: '#000',
+    position: 'relative',
+  },
   imageContainer: {
     width: '100%',
     alignItems: 'center',
     minHeight: '50%',
     justifyContent: 'center',
-    color: 'white',
     flex: 1,
   },
   stepContainer: {
@@ -60,6 +87,5 @@ const styles = StyleSheet.create({
     borderWidth: 2, 
     borderRadius: 50, 
     padding: 10, 
-    paddingLeft: 15, 
-  },
+    paddingLeft: 15, },
 });
