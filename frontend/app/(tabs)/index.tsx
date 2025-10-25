@@ -19,6 +19,7 @@ const Page = ({ index }: { index: number }) => {
     <View style={styles.page}>
       <Pressable style={styles.imageContainer} onPress={toggleHeart}>
         <ThemedText type="title">Product Image</ThemedText>
+        <image src={{ uri: 'assets\images\clothing.jpg' }} style={{ width: 300, height: 300 }} />
       </Pressable>
 
       <Pressable style={styles.heartContainer} onPress={toggleHeart}>
