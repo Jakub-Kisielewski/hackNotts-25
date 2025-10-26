@@ -69,7 +69,7 @@ INSERT INTO products (
     'Fred Parry',
     26.00,
     'https://www.houseoffraser.co.uk/brand/fred-perry/logo-t-shirt-599220#colcode=59922041',
-    ARRAY['https://cdn.media.amplience.net/i/frasersdev/59922041_o?fmt=auto&upscale=false&w=992&h=992&sm=scaleFit&$h-ttl$'],
+    ARRAY['https://cdn.media.amplience.net/i/frasersdev/59922041_o?fmt=auto&upscale=false&w=992&h=992&sm=scaleFit&$h-ttl$', 'https://cdn.media.amplience.net/i/frasersdev/58585703_o?fmt=auto&upscale=false&w=1200&h=1200&sm=scaleFit&$h-ttl$', 'https://www.sportsdirect.com/images/imgzoom/66/66405803_xxl.jpg' ],
     ARRAY['S', 'XL'],
     ARRAY['Branded', 'Epic']
 );
