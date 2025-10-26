@@ -86,14 +86,14 @@ if __name__ == "__main__":
         sizes = product_data.get("sizes", [])
         
         # Convert sizes list to SQL array
-        sizes_sql = "{" + ", ".join(f'\'{s}\'' for s in sizes) + "}" if sizes else "{}"
+        sizes_sql = "[" + ", ".join(f'\'{s}\'' for s in sizes) + "]" if sizes else "{}"
         
-        imgs_sql = "{" + ", ".join(f'\'{i}\'' for i in image_urls) + "}" if image_urls else "{}"
+        imgs_sql = "[" + ", ".join(f'\'{i}\'' for i in image_urls) + "]" if image_urls else "{}"
 
         # Build SQL statement
         sql = f"""
-        INSERT INTO products (label, company, price, websiteURL, imageURL, sizes)
-        VALUES ('{label}', '{company}', {price}, '{website_url}', {imgs_sql}, {sizes_sql});
+        INSERT INTO products (label, company, price, websiteURL, imageURLS, sizes, tags)
+        VALUES ('{label}', '{company}', {price}, '{website_url}', ARRAY{imgs_sql}, ARRAY{sizes_sql}, ARRAY['Cool']);
         """
 
         print(sql.strip())
