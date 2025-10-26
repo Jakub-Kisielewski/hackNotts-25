@@ -13,7 +13,7 @@ CREATE TABLE products (
     company TEXT,
     price NUMERIC,
     websiteURL TEXT,
-    imageURL TEXT,
+    imageURLS TEXT[],
     sizes TEXT[],
     tags TEXT[]
 );
