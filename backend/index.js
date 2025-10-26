@@ -131,33 +131,49 @@ app.post("/conversations", requireAuth, async (req, res) => {
     const { other_user_id } = req.body;
     const current_user_id = req.session.user.id;
     
+    console.log("POST /conversations - Raw other_user_id:", other_user_id, "Type:", typeof other_user_id);
+    console.log("POST /conversations - current_user_id:", current_user_id, "Type:", typeof current_user_id);
+    
     if (!other_user_id) {
         return res.status(400).json({ error: "Missing other_user_id" });
     }
     
+    // Convert to integer to ensure type safety
+    const otherUserId = parseInt(other_user_id, 10);
+    
+    console.log("POST /conversations - Parsed otherUserId:", otherUserId, "Type:", typeof otherUserId);
+    
+    if (isNaN(otherUserId)) {
+        return res.status(400).json({ error: "Invalid other_user_id" });
+    }
+    
     try {
         // Check if conversation already exists
+        console.log("Checking for existing conversation between", current_user_id, "and", otherUserId);
         const existing = await pool.query(
             `SELECT * FROM conversations 
-             WHERE user_lowest = LEAST($1, $2) 
-             AND user_highest = GREATEST($1, $2);`,
-            [current_user_id, other_user_id]
+             WHERE user_lowest = LEAST($1::integer, $2::integer) 
+             AND user_highest = GREATEST($1::integer, $2::integer);`,
+            [current_user_id, otherUserId]
         );
         
         if (existing.rows.length > 0) {
+            console.log("Found existing conversation:", existing.rows[0].id);
             return res.json({ success: true, conversation: existing.rows[0] });
         }
         
         // Create new conversation
+        console.log("Creating new conversation");
         const result = await pool.query(
             `INSERT INTO conversations (user1_id, user2_id) 
              VALUES ($1, $2) RETURNING *;`,
-            [current_user_id, other_user_id]
+            [current_user_id, otherUserId]
         );
         
+        console.log("Created new conversation:", result.rows[0].id);
         res.json({ success: true, conversation: result.rows[0] });
     } catch (err) {
-        console.error("Error with conversation", err.stack);
+        console.error("Error with conversation", err);
         res.status(500).json({ error: "Failed to handle conversation" });
     }
 });
@@ -276,6 +292,8 @@ app.post("/share", requireAuth, async (req, res) => {
     const { conversation_id, product_id } = req.body;
     const sender_id = req.session.user.id;
     
+    console.log("POST /share - conversation_id:", conversation_id, "product_id:", product_id, "sender_id:", sender_id);
+    
     if (!conversation_id || !product_id) {
         return res.status(400).json({ error: "Missing required fields" });
     }
@@ -298,6 +316,8 @@ app.post("/share", requireAuth, async (req, res) => {
             ? conversation.user2_id 
             : conversation.user1_id;
         
+        console.log("Share - receiver_id:", receiver_id);
+        
         // Get product details
         const productResult = await pool.query(
             `SELECT label FROM products WHERE id = $1;`,
@@ -319,6 +339,8 @@ app.post("/share", requireAuth, async (req, res) => {
         
         const message_id = messageResult.rows[0].id;
         
+        console.log("Created message with id:", message_id);
+        
         // Insert into shares table
         await pool.query(
             `INSERT INTO shares (id, sender_id, receiver_id, product_id)
@@ -326,11 +348,15 @@ app.post("/share", requireAuth, async (req, res) => {
             [message_id, sender_id, receiver_id, product_id]
         );
         
+        console.log("Created share record");
+        
         // Update conversation's last_message_id
         await pool.query(
             `UPDATE conversations SET last_message_id = $1 WHERE id = $2;`,
             [message_id, conversation_id]
         );
+        
+        console.log("Updated conversation last_message_id");
         
         res.json({ success: true, message: messageResult.rows[0] });
     } catch (err) {

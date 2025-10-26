@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Image, Linking } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import React, { useState, useEffect, useRef } from "react";
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Image, Linking, RefreshControl } from "react-native";
+import { useLocalSearchParams, useFocusEffect } from "expo-router";
 import { FontAwesome, MaterialIcons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/auth-context";
 
@@ -23,15 +23,40 @@ export default function Conversation() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const { user } = useAuth();
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const flatListRef = useRef<FlatList>(null);
 
+  // Fetch messages when component mounts or conversation changes
   useEffect(() => {
     if (conversationId) {
       fetchMessages();
     }
   }, [conversationId]);
 
-  const fetchMessages = async () => {
+  // Set up polling when screen is focused, clear when unfocused
+  useFocusEffect(
+    React.useCallback(() => {
+      // Start polling every 3 seconds
+      pollIntervalRef.current = setInterval(() => {
+        fetchMessages(true); // true = silent fetch (no loading spinner)
+      }, 3000);
+
+      // Cleanup: stop polling when screen loses focus
+      return () => {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+        }
+      };
+    }, [conversationId])
+  );
+
+  const fetchMessages = async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    }
+    
     try {
       const response = await fetch(
         `http://localhost:3001/conversations/${conversationId}/messages`,
@@ -41,12 +66,27 @@ export default function Conversation() {
       
       if (data.success) {
         setMessages(data.messages);
+        
+        // Auto-scroll to bottom when new messages arrive (only if not silent)
+        if (!silent) {
+          setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }, 100);
+        }
       }
     } catch (err) {
       console.error('Error fetching messages:', err);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
+      setRefreshing(false);
     }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchMessages(true);
   };
 
   const sendMessage = async () => {
@@ -68,6 +108,11 @@ export default function Conversation() {
       if (data.success) {
         setMessages([...messages, data.message]);
         setInput("");
+        
+        // Scroll to bottom after sending
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
       }
     } catch (err) {
       console.error('Error sending message:', err);
@@ -75,6 +120,7 @@ export default function Conversation() {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
+    // Check if the current logged-in user sent this message
     const isSender = item.sender_id === user?.id;
     
     if (item.message_type === 'share' && item.product_id) {
@@ -85,7 +131,9 @@ export default function Conversation() {
       
       return (
         <View style={[styles.messageBubble, isSender ? styles.sent : styles.received]}>
-          <Text style={styles.shareLabel}>Shared a product:</Text>
+          <Text style={styles.shareLabel}>
+            {isSender ? 'You shared a product:' : `${username} shared a product:`}
+          </Text>
           
           <View style={styles.productCard}>
             {imageUrl && imageUrl !== 'NA' && (
@@ -149,14 +197,31 @@ export default function Conversation() {
           <FontAwesome name="user" size={40} color="#fff" />
         </View>
         <Text style={styles.username}>{username}</Text>
+        <View style={styles.autoRefreshIndicator}>
+          <MaterialIcons name="refresh" size={16} color="#4CAF50" />
+          <Text style={styles.autoRefreshText}>Auto-refresh</Text>
+        </View>
       </View>
 
       {/* Messages */}
       <FlatList
+        ref={flatListRef}
         data={messages}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderMessage}
         contentContainerStyle={{ padding: 10, flexGrow: 1 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#fff"
+            colors={["#fff"]}
+          />
+        }
+        onContentSizeChange={() => {
+          // Auto-scroll to bottom when content size changes
+          flatListRef.current?.scrollToEnd({ animated: false });
+        }}
       />
 
       {/* Bottom input area */}
@@ -171,6 +236,7 @@ export default function Conversation() {
           placeholderTextColor="#888"
           value={input}
           onChangeText={setInput}
+          onSubmitEditing={sendMessage}
         />
 
         <TouchableOpacity style={styles.iconButton} onPress={sendMessage}>
@@ -199,7 +265,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 10,
   },
-  username: { fontSize: 20, fontWeight: "700", color: "#fff" },
+  username: { fontSize: 20, fontWeight: "700", color: "#fff", flex: 1 },
+  autoRefreshIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(76, 175, 80, 0.2)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  autoRefreshText: {
+    color: "#4CAF50",
+    fontSize: 10,
+    marginLeft: 4,
+    fontWeight: "600",
+  },
   messageBubble: {
     maxWidth: "70%",
     padding: 10,
@@ -207,18 +287,18 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   sent: { 
-    backgroundColor: "#333", 
+    backgroundColor: "#0084ff", 
     alignSelf: "flex-end", 
     borderTopRightRadius: 0 
   },
   received: { 
-    backgroundColor: "#1a1a1a", 
+    backgroundColor: "#333", 
     alignSelf: "flex-start", 
     borderTopLeftRadius: 0 
   },
   messageText: { color: "#fff", fontSize: 15 },
   shareLabel: { 
-    color: "#888", 
+    color: "#fff", 
     fontSize: 12, 
     marginBottom: 8,
     fontStyle: 'italic'

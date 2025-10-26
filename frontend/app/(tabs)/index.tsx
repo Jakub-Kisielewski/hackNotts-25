@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, FlatList, Dimensions, Pressable, Image, ActivityIndicator, Modal, TouchableOpacity, ScrollView } from 'react-native';
+import { View, StyleSheet, FlatList, Dimensions, Pressable, Image, ActivityIndicator, Modal, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import { faHeart as faHeartRegular } from '@fortawesome/free-regular-svg-icons';
 import { faHeart as faHeartSolid, faShare as faShareNodes } from '@fortawesome/free-solid-svg-icons';
@@ -24,15 +24,12 @@ const ImageCarousel = ({ images }: { images: string[] }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Handle if images is not an array or is null/undefined
   const imageArray = Array.isArray(images) ? images : [];
   const validImages = imageArray.filter(img => {
     if (!img) return false;
     const trimmed = img.trim();
     return trimmed !== '' && trimmed !== 'NA';
   });
-  
-  console.log('Valid images count:', validImages.length);
   
   if (validImages.length === 0) {
     return (
@@ -59,20 +56,15 @@ const ImageCarousel = ({ images }: { images: string[] }) => {
         scrollEventThrottle={16}
         style={styles.scrollView}
       >
-        {validImages.map((imageUrl, index) => {
-          console.log(`Rendering image ${index}:`, imageUrl);
-          return (
-            <View key={index} style={styles.imageWrapper}>
-              <Image 
-                source={{ uri: imageUrl }} 
-                style={styles.productImage}
-                resizeMode="contain"
-                onLoad={() => console.log(`Image ${index} loaded successfully`)}
-                onError={(e) => console.log(`Image ${index} failed to load:`, e.nativeEvent.error)}
-              />
-            </View>
-          );
-        })}
+        {validImages.map((imageUrl, index) => (
+          <View key={index} style={styles.imageWrapper}>
+            <Image 
+              source={{ uri: imageUrl }} 
+              style={styles.productImage}
+              resizeMode="contain"
+            />
+          </View>
+        ))}
       </ScrollView>
       
       {validImages.length > 1 && (
@@ -90,8 +82,8 @@ const Page = ({ product }: { product: Product }) => {
   const [liked, setLiked] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
-  const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const { user } = useAuth();
 
   const toggleHeart = () => setLiked(!liked);
@@ -101,41 +93,58 @@ const Page = ({ product }: { product: Product }) => {
     setLoading(true);
     
     try {
-      // Fetch users
       const usersRes = await fetch('http://localhost:3001/users', {
         credentials: 'include',
       });
+      
+      if (!usersRes.ok) {
+        throw new Error('Failed to fetch users');
+      }
+      
       const usersData = await usersRes.json();
       
-      // Fetch existing conversations
-      const convsRes = await fetch('http://localhost:3001/conversations', {
-        credentials: 'include',
-      });
-      const convsData = await convsRes.json();
-      
-      if (usersData.success) setUsers(usersData.users);
-      if (convsData.success) setConversations(convsData.conversations);
-    } catch (err) {
+      if (usersData.success) {
+        setUsers(usersData.users);
+      } else {
+        throw new Error('Failed to load users');
+      }
+    } catch (err: any) {
       console.error('Error loading share data:', err);
+      Alert.alert('Error', err.message || 'Failed to load users');
     } finally {
       setLoading(false);
     }
   };
 
-  const shareProduct = async (userId: number) => {
+  const shareProduct = async (userId: number, userName: string) => {
+    setSharing(true);
     try {
-      // Get or create conversation
+      console.log('Starting share process...');
+      console.log('User ID:', userId);
+      console.log('Product ID:', product.id);
+      
+      // Step 1: Get or create conversation
       const convRes = await fetch('http://localhost:3001/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ other_user_id: userId }),
       });
+      
+      if (!convRes.ok) {
+        const errorData = await convRes.json();
+        throw new Error(errorData.error || 'Failed to create conversation');
+      }
+      
       const convData = await convRes.json();
+      console.log('Conversation response:', convData);
       
-      if (!convData.success) throw new Error('Failed to create conversation');
+      if (!convData.success) {
+        throw new Error('Failed to create conversation');
+      }
       
-      // Share product
+      // Step 2: Share product
+      console.log('Sharing product to conversation:', convData.conversation.id);
       const shareRes = await fetch('http://localhost:3001/share', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -146,15 +155,25 @@ const Page = ({ product }: { product: Product }) => {
         }),
       });
       
+      if (!shareRes.ok) {
+        const errorData = await shareRes.json();
+        throw new Error(errorData.error || 'Failed to share product');
+      }
+      
       const shareData = await shareRes.json();
+      console.log('Share response:', shareData);
       
       if (shareData.success) {
-        alert('Product shared successfully!');
+        Alert.alert('Success', `Product shared with ${userName}!`);
         setShowShareModal(false);
+      } else {
+        throw new Error('Share operation failed');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error sharing product:', err);
-      alert('Failed to share product');
+      Alert.alert('Error', err.message || 'Failed to share product');
+    } finally {
+      setSharing(false);
     }
   };
 
@@ -205,26 +224,36 @@ const Page = ({ product }: { product: Product }) => {
             </ThemedText>
             
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#fff" size="large" />
+            ) : users.length === 0 ? (
+              <ThemedText style={styles.noUsersText}>
+                No users available to share with
+              </ThemedText>
             ) : (
-              <FlatList
-                data={users}
-                keyExtractor={(item) => item.id.toString()}
-                renderItem={({ item }) => (
+              <ScrollView style={styles.usersList}>
+                {users.map((item) => (
                   <TouchableOpacity
+                    key={item.id}
                     style={styles.userItem}
-                    onPress={() => shareProduct(item.id)}
+                    onPress={() => shareProduct(item.id, item.name)}
+                    disabled={sharing}
                   >
-                    <ThemedText>{item.name}</ThemedText>
-                    <ThemedText style={styles.userEmail}>{item.email}</ThemedText>
+                    <View>
+                      <ThemedText>{item.name}</ThemedText>
+                      <ThemedText style={styles.userEmail}>{item.email}</ThemedText>
+                    </View>
+                    {sharing && (
+                      <ActivityIndicator color="#fff" size="small" />
+                    )}
                   </TouchableOpacity>
-                )}
-              />
+                ))}
+              </ScrollView>
             )}
             
             <TouchableOpacity
               style={styles.closeButton}
               onPress={() => setShowShareModal(false)}
+              disabled={sharing}
             >
               <ThemedText>Close</ThemedText>
             </TouchableOpacity>
@@ -256,7 +285,6 @@ export default function HomeScreen() {
       }
 
       const data = await response.json();
-      console.log('Fetched products:', data);
       
       if (data.success && data.items) {
         setProducts(data.items);
@@ -372,16 +400,6 @@ const styles = StyleSheet.create({
     width: '100%',
     opacity: 0.9,
   },
-  heartContainer: { 
-    position: 'absolute',
-    right: 20,
-    top: '45%',
-    borderColor: 'white', 
-    borderWidth: 2, 
-    borderRadius: 50, 
-    padding: 10, 
-    paddingLeft: 11,
-  },
   actionButtons: {
     position: 'absolute',
     right: 20,
@@ -413,7 +431,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
+  usersList: {
+    maxHeight: 400,
+  },
   userItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#333',
@@ -422,6 +446,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#888',
     marginTop: 4,
+  },
+  noUsersText: {
+    textAlign: 'center',
+    color: '#888',
+    padding: 20,
   },
   closeButton: {
     marginTop: 15,

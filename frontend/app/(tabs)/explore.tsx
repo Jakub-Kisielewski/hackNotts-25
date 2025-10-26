@@ -45,9 +45,38 @@ export default class Explore extends Component<{}, State> {
     currentUserId: null,
   };
 
+  pollInterval: NodeJS.Timeout | null = null;
+
   async componentDidMount() {
+    await this.fetchCurrentUser();
     this.fetchConversations();
+    
+    // Start polling for new conversations every 5 seconds
+    this.pollInterval = setInterval(() => {
+      this.fetchConversations(true); // silent fetch
+    }, 5000);
   }
+
+  componentWillUnmount() {
+    // Clean up interval
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+    }
+  }
+
+  fetchCurrentUser = async () => {
+    try {
+      // Get current user from AsyncStorage
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const userData = await AsyncStorage.getItem('user');
+      if (userData) {
+        const user = JSON.parse(userData);
+        this.setState({ currentUserId: user.id });
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+    }
+  };
 
   fetchConversations = async () => {
     try {
@@ -78,14 +107,23 @@ export default class Explore extends Component<{}, State> {
   };
 
   openConversation = (conversation: Conversation) => {
-    // Determine the other user's name
-    const otherUserName = conversation.user1_name || conversation.user2_name;
+    const { currentUserId } = this.state;
+    
+    // Determine the other user's name (the person we're chatting with)
+    const otherUserName = currentUserId === conversation.user1_id 
+      ? conversation.user2_name 
+      : conversation.user1_name;
+    
+    const otherUserId = currentUserId === conversation.user1_id
+      ? conversation.user2_id
+      : conversation.user1_id;
     
     router.push({
       pathname: "/(tabs)/conversation",
       params: {
         conversationId: conversation.id.toString(),
         username: otherUserName,
+        otherUserId: otherUserId.toString(),
       },
     });
 
@@ -112,7 +150,13 @@ export default class Explore extends Component<{}, State> {
   };
 
   renderConversation = ({ item }: { item: Conversation }) => {
-    const displayName = item.user1_name || item.user2_name || 'Unknown User';
+    const { currentUserId } = this.state;
+    
+    // Show the OTHER user's name (not the current user)
+    const displayName = currentUserId === item.user1_id 
+      ? item.user2_name 
+      : item.user1_name;
+    
     const lastMessage = this.getDisplayMessage(item);
     
     return (
@@ -129,7 +173,7 @@ export default class Explore extends Component<{}, State> {
           {/* Text container */}
           <View style={styles.textContainer}>
             <View style={styles.rowTop}>
-              <Text style={styles.username}>{displayName}</Text>
+              <Text style={styles.username}>{displayName || 'Unknown User'}</Text>
             </View>
 
             {/* Expandable Message */}
