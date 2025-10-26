@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import psycopg2
+import sys
 
 
 def scrape_sportsdirect_product(url):
@@ -39,14 +40,14 @@ def scrape_sportsdirect_product(url):
     if websiteURL_tag:
         data["websiteURL"] = websiteURL_tag
             
-        img_tags = soup.select("img.product-image, img.img-responsive")
-        images = []
-        for img in img_tags:
-            src = img.get("src") or img.get("data-src")
-            if src and src.startswith("http"):
-                images.append(src)
-        if images:
-            data["images"] = images
+    img_tags = soup.select("img.product-image, img.img-responsive")
+    images = []
+    for img in img_tags:
+        src = img.get("src") or img.get("data-src")
+        if src and src.startswith("http"):
+            images.append(src)
+    if images:
+        data["images"] = images
     
     
     size_tags = soup.select("li.tooltip.sizeButtonli")
@@ -63,45 +64,46 @@ def scrape_sportsdirect_product(url):
     if sizes:
         data["sizes"] = sizes
 
-    # for tag in size_tags:
-        
-    #     size = tag.get("data-size") or tag.get_text(strip=True)
-    #     stock = tag.get("data-stock-qty")
-    #     out_of_stock = "outOfStock" in tag.get("class", [])
-
-    # if stock and stock.isdigit() and int(stock) > 0 and not out_of_stock:
-    #     sizes.append(size)
-
-    # if sizes:
-    #     data["sizes"] = sizes
-
     return data
 
 if __name__ == "__main__":
-    url = "https://www.sportsdirect.com/trespass-claremont-gilet-mens-442704#colcode=44270415"
-    product_data = scrape_sportsdirect_product(url)
-    print(product_data)
-
-    label = product_data["name"]
-    company = product_data["company"]
-    price = product_data["price"]
-    website_url = product_data["websiteURL"]
-    image_urls = product_data["images"]
-    sizes = product_data["sizes"]
+    # Check if URL argument is provided
+    if len(sys.argv) < 2:
+        print("Usage: python script.py <URL>")
+        print("Example: python script.py https://www.houseoffraser.co.uk/brand/belstaff/...")
+        sys.exit(1)
     
-    # Convert sizes list SQL array
-    sizes_sql = "{" + ", ".join(f'\'{s}\'' for s in sizes) + "}" if sizes else "{}"
+    url = sys.argv[1]
     
-    imgs_sql = "{" + ", ".join(f'\'{i}\'' for i in image_urls) + "}" if image_urls else "{}"
+    try:
+        product_data = scrape_sportsdirect_product(url)
 
-    # Build SQL statement
-    sql = f"""
-    INSERT INTO products (label, company, price, websiteURL, imageURL, sizes)
-    VALUES ('{label}', '{company}', {price}, '{website_url}', '{imgs_sql}', '{sizes_sql}');
-    """
+        label = product_data.get("name", "")
+        company = product_data.get("company", "")
+        price = product_data.get("price", 0.0)
+        website_url = product_data.get("websiteURL", "")
+        image_urls = product_data.get("images", [])
+        sizes = product_data.get("sizes", [])
+        
+        # Convert sizes list to SQL array
+        sizes_sql = "{" + ", ".join(f'\'{s}\'' for s in sizes) + "}" if sizes else "{}"
+        
+        imgs_sql = "{" + ", ".join(f'\'{i}\'' for i in image_urls) + "}" if image_urls else "{}"
 
-    print(sql.strip())
-    
+        # Build SQL statement
+        sql = f"""
+        INSERT INTO products (label, company, price, websiteURL, imageURL, sizes)
+        VALUES ('{label}', '{company}', {price}, '{website_url}', {imgs_sql}, {sizes_sql});
+        """
+
+        print(sql.strip())
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching URL: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error processing data: {e}")
+        sys.exit(1)
 
     # caution: sleep if doing many requests
     time.sleep(2)
