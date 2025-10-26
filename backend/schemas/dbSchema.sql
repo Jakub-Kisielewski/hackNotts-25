@@ -88,3 +88,6 @@ WITH (OIDS=FALSE);
 ALTER TABLE sessions ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid");
 
 CREATE INDEX "IDX_session_expire" ON sessions ("expire");
+
+CREATE EXTENSION IF NOT EXISTS vector;
+ALTER TABLE products ADD COLUMN embedding vector(384);

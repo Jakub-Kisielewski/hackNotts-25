@@ -63,16 +63,42 @@ app.get("/", async (req, res) => {
     res.send("API For FitR");
 });
 
-app.get("/feed", async (req, res) => {
+app.get("/feed", requireAuth, async (req, res) => {
     try {
-        const products = await pool.query("SELECT * FROM products ORDER BY RANDOM() LIMIT 50;");
-        console.log(`Fetched ${products.rows.length} products`);
-        res.json({ success: true, items: products.rows });
+        const userId = req.session.user.id;
+
+        // 1. Get liked products
+        const likes = await pool.query(
+            "SELECT p.embedding FROM likes l JOIN products p ON l.product_id = p.id WHERE l.user_id = $1 AND p.embedding IS NOT NULL;",
+            [userId]
+        );
+
+        if (likes.rows.length === 0) {
+            // fallback: random feed for new users
+            const random = await pool.query("SELECT * FROM products ORDER BY RANDOM() LIMIT 30;");
+            return res.json({ success: true, items: random.rows });
+        }
+
+        // 2. Compute average embedding
+        const avg = Array(likes.rows[0].embedding.length).fill(0);
+        for (const { embedding } of likes.rows) {
+            embedding.forEach((v, i) => (avg[i] += v));
+        }
+        for (let i = 0; i < avg.length; i++) avg[i] /= likes.rows.length;
+
+        // 3. Find similar items
+        const result = await pool.query(
+            "SELECT * FROM products ORDER BY embedding <-> $1 LIMIT 30;",
+            [avg]
+        );
+
+        res.json({ success: true, items: result.rows });
     } catch (err) {
-        console.error("Error fetching products", err.stack);
-        res.status(500).json({ error: "Failed to fetch products" });
+        console.error("Error fetching AI feed", err);
+        res.status(500).json({ error: "Failed to fetch AI feed" });
     }
 });
+
 
 app.post("/signup", async (req, res) => {
     const { name, email, password } = req.body;
