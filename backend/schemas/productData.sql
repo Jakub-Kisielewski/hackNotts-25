@@ -33,7 +33,7 @@ INSERT INTO products (
     'Boss',
     40.00,
     'https://www.houseoffraser.co.uk/brand/boss/boss-mens-nowhere-oversized-t-shirt-585856#colcode=58585604',
-    ARRAY['NA'],
+    ARRAY['https://cdn.media.amplience.net/i/frasersdev/58585604_o?fmt=auto&upscale=false&w=1200&h=1200&sm=scaleFit&$h-ttl$'],
     ARRAY['S', 'M', 'L', 'XL'],
     ARRAY['Branded']
 );
@@ -51,7 +51,7 @@ INSERT INTO products (
     'Boss',
     23.00,
     'https://www.houseoffraser.co.uk/brand/boss/boss-mens-thinking-1-t-shirt--signature-logo-322818#colcode=32281804',
-    ARRAY['NA'],
+    ARRAY['https://cdn.media.amplience.net/i/frasersdev/32281804_o?fmt=auto&upscale=false&w=992&h=992&sm=scaleFit&$h-ttl$'],
     ARRAY['XS', 'S', 'M'],
     ARRAY['Branded']
 );
@@ -69,7 +69,7 @@ INSERT INTO products (
     'Fred Parry',
     26.00,
     'https://www.houseoffraser.co.uk/brand/fred-perry/logo-t-shirt-599220#colcode=59922041',
-    ARRAY['NA'],
+    ARRAY['https://cdn.media.amplience.net/i/frasersdev/59922041_o?fmt=auto&upscale=false&w=992&h=992&sm=scaleFit&$h-ttl$'],
     ARRAY['S', 'XL'],
     ARRAY['Branded', 'Epic']
 );
@@ -87,7 +87,7 @@ INSERT INTO products (
     'Boss',
     35.00,
     'https://www.houseoffraser.co.uk/brand/boss/boss-mens-hbo-jellyfish-oversized-t-shirt-585857#colcode=58585703',
-    ARRAY['NA'],
+    ARRAY['https://cdn.media.amplience.net/i/frasersdev/58585703_o?fmt=auto&upscale=false&w=1200&h=1200&sm=scaleFit&$h-ttl$'],
     ARRAY['S', 'M', 'L', 'XL'],
     ARRAY['Branded', 'Epic']
 );
@@ -105,7 +105,7 @@ INSERT INTO products (
     'Slazenger',
     7.00,
     'https://www.sportsdirect.com/slazenger-leisure-hoodies-womens-664058#colcode=66405803',
-    ARRAY['NA'],
+    ARRAY['https://www.sportsdirect.com/images/imgzoom/66/66405803_xxl.jpg'],
     ARRAY['8', '10', '12', '14'],
     ARRAY['Branded', 'Epic']
 );

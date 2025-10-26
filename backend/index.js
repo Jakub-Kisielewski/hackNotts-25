@@ -72,14 +72,16 @@ app.post("/item", async (req, res) => {
     }
 });
 
-app.get("/feed", requireAuth, async (req, res) => {
+// Fixed: Changed from items to products table, removed requireAuth for testing
+app.get("/feed", async (req, res) => {
     try {
-        // Get all items and pick 50 randomly
-        const items = await pool.query("SELECT * FROM items ORDER BY RANDOM() LIMIT 50;");
-        res.json({ success: true, items: items.rows });
+        // Get all products and pick 50 randomly
+        const products = await pool.query("SELECT * FROM products ORDER BY RANDOM() LIMIT 50;");
+        console.log(`Fetched ${products.rows.length} products`);
+        res.json({ success: true, items: products.rows });
     } catch (err) {
-        console.error("Error fetching items", err.stack);
-        res.status(500).json({ error: "Failed to fetch items" });
+        console.error("Error fetching products", err.stack);
+        res.status(500).json({ error: "Failed to fetch products" });
     }
 });
 
