@@ -4,6 +4,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
+import cors from 'cors';
 
 dotenv.config();
 
@@ -18,6 +19,11 @@ const pool = new Pool({
 });
 
 const PgSession = connectPgSimple(session);
+
+app.use(cors({
+    origin: true, // Allow all origins in development
+    credentials: true
+}));
 
 app.use(cookieParser());
 app.use(express.json());
