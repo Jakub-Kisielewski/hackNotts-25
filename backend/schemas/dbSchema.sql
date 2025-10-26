@@ -52,6 +52,31 @@ CREATE TABLE receipts (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Conversations
+CREATE TABLE conversations (
+    id SERIAL PRIMARY KEY,
+    user1_id INT REFERENCES users(id),
+    user2_id INT REFERENCES users(id),
+    last_message_id INT,
+    user_lowest INT GENERATED ALWAYS AS (LEAST(user1_id, user2_id)) STORED,
+    user_highest INT GENERATED ALWAYS AS (GREATEST(user1_id, user2_id)) STORED,
+    UNIQUE (user_lowest, user_highest)
+);
+
+
+-- Messages
+CREATE TABLE messages (
+    id SERIAL PRIMARY KEY,
+    conversation_id INT REFERENCES conversations(id),
+    sender_id INT REFERENCES users(id),
+    content TEXT,
+    message_type TEXT CHECK(message_type IN ('text', 'share')),
+    is_read BOOLEAN DEFAULT FALSE
+);
+
+ALTER TABLE conversations
+ADD CONSTRAINT fk_conversation_last_message
+FOREIGN KEY (last_message_id) REFERENCES messages(id);
 
 CREATE TABLE sessions (
   sid varchar NOT NULL COLLATE "default",

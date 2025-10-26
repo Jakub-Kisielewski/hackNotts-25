@@ -21,7 +21,7 @@ const pool = new Pool({
 const PgSession = connectPgSimple(session);
 
 app.use(cors({
-    origin: true, // Allow all origins in development
+    origin: true,
     credentials: true
 }));
 
@@ -29,7 +29,6 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// trust proxy if behind a reverse proxy (set in env when needed)
 if (process.env.TRUST_PROXY === "1") {
     app.set("trust proxy", 1);
 }
@@ -47,35 +46,25 @@ app.use(
         cookie: {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
-            maxAge: 24 * 60 * 60 * 1000, // 1 day
+            maxAge: 24 * 60 * 60 * 1000,
         },
     })
 );
+
+// Middleware to protect endpoints requiring auth
+function requireAuth(req, res, next) {
+    if (!req.session || !req.session.user) {
+        return res.status(401).json({ error: "Authentication required" });
+    }
+    next();
+}
 
 app.get("/", async (req, res) => {
     res.send("API For FitR");
 });
 
-app.post("/item", async (req, res) => {
-    try {
-        // Add a item to database
-        const { name, description, price, image, category, brand, quantity } = req.body;
-        const result = await pool.query(
-            "INSERT INTO items(name, description, price, image, category, brand, quantity) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *;",
-            [name, description, price, image, category, brand, quantity]
-        );
-        console.log("Item added:", result.rows[0]);
-        res.json({ success: true, item: result.rows[0] });
-    } catch (err) {
-        console.error("Error adding item", err.stack);
-        res.status(500).json({ error: "Failed to add item" });
-    }
-});
-
-// Fixed: Changed from items to products table, removed requireAuth for testing
 app.get("/feed", async (req, res) => {
     try {
-        // Get all products and pick 50 randomly
         const products = await pool.query("SELECT * FROM products ORDER BY RANDOM() LIMIT 50;");
         console.log(`Fetched ${products.rows.length} products`);
         res.json({ success: true, items: products.rows });
@@ -86,7 +75,6 @@ app.get("/feed", async (req, res) => {
 });
 
 app.post("/signup", async (req, res) => {
-    // expecting { name, email, password }
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
         return res.status(400).json({ error: "Missing name, email or password" });
@@ -97,7 +85,6 @@ app.post("/signup", async (req, res) => {
             [name, email, password]
         );
         const user = result.rows[0];
-        // set session
         req.session.user = { id: user.id, email: user.email };
         res.json({ success: true, user });
     } catch (err) {
@@ -107,7 +94,6 @@ app.post("/signup", async (req, res) => {
 });
 
 app.post("/login", async (req, res) => {
-    // expecting { email, password }
     const { email, password } = req.body;
     if (!email || !password) {
         return res.status(400).json({ error: "Missing email or password" });
@@ -126,24 +112,243 @@ app.post("/login", async (req, res) => {
     }
 });
 
-// Middleware to protect endpoints requiring auth
-function requireAuth(req, res, next) {
-    if (!req.session || !req.session.user) {
-        return res.status(401).json({ error: "Authentication required" });
+// Get all users (for finding people to chat with)
+app.get("/users", requireAuth, async (req, res) => {
+    try {
+        const result = await pool.query(
+            "SELECT id, name, email FROM users WHERE id != $1;",
+            [req.session.user.id]
+        );
+        res.json({ success: true, users: result.rows });
+    } catch (err) {
+        console.error("Error fetching users", err.stack);
+        res.status(500).json({ error: "Failed to fetch users" });
     }
-    next();
-}
+});
 
+// Get or create conversation between two users
+app.post("/conversations", requireAuth, async (req, res) => {
+    const { other_user_id } = req.body;
+    const current_user_id = req.session.user.id;
+    
+    if (!other_user_id) {
+        return res.status(400).json({ error: "Missing other_user_id" });
+    }
+    
+    try {
+        // Check if conversation already exists
+        const existing = await pool.query(
+            `SELECT * FROM conversations 
+             WHERE user_lowest = LEAST($1, $2) 
+             AND user_highest = GREATEST($1, $2);`,
+            [current_user_id, other_user_id]
+        );
+        
+        if (existing.rows.length > 0) {
+            return res.json({ success: true, conversation: existing.rows[0] });
+        }
+        
+        // Create new conversation
+        const result = await pool.query(
+            `INSERT INTO conversations (user1_id, user2_id) 
+             VALUES ($1, $2) RETURNING *;`,
+            [current_user_id, other_user_id]
+        );
+        
+        res.json({ success: true, conversation: result.rows[0] });
+    } catch (err) {
+        console.error("Error with conversation", err.stack);
+        res.status(500).json({ error: "Failed to handle conversation" });
+    }
+});
+
+// Get all conversations for current user
+app.get("/conversations", requireAuth, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT c.*, 
+                    u1.name as user1_name, 
+                    u2.name as user2_name,
+                    m.content as last_message_content,
+                    m.message_type as last_message_type,
+                    m.sender_id as last_message_sender_id
+             FROM conversations c
+             LEFT JOIN users u1 ON c.user1_id = u1.id
+             LEFT JOIN users u2 ON c.user2_id = u2.id
+             LEFT JOIN messages m ON c.last_message_id = m.id
+             WHERE c.user1_id = $1 OR c.user2_id = $1
+             ORDER BY COALESCE(m.id, 0) DESC;`,
+            [req.session.user.id]
+        );
+        res.json({ success: true, conversations: result.rows });
+    } catch (err) {
+        console.error("Error fetching conversations", err.stack);
+        res.status(500).json({ error: "Failed to fetch conversations" });
+    }
+});
+
+// Get messages for a conversation
+app.get("/conversations/:id/messages", requireAuth, async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+        // Verify user is part of conversation
+        const convCheck = await pool.query(
+            `SELECT * FROM conversations 
+             WHERE id = $1 AND (user1_id = $2 OR user2_id = $2);`,
+            [id, req.session.user.id]
+        );
+        
+        if (convCheck.rows.length === 0) {
+            return res.status(403).json({ error: "Not authorized" });
+        }
+        
+        // Get messages with product details if it's a share
+        const result = await pool.query(
+            `SELECT m.*, 
+                    p.id as product_id,
+                    p.label as product_label,
+                    p.company as product_company,
+                    p.price as product_price,
+                    p.websiteurl as product_websiteurl,
+                    p.imageurls as product_imageurls,
+                    p.sizes as product_sizes,
+                    p.tags as product_tags,
+                    s.product_id as share_product_id
+             FROM messages m
+             LEFT JOIN shares s ON m.id = s.id AND m.message_type = 'share'
+             LEFT JOIN products p ON s.product_id = p.id
+             WHERE m.conversation_id = $1
+             ORDER BY m.id ASC;`,
+            [id]
+        );
+        
+        res.json({ success: true, messages: result.rows });
+    } catch (err) {
+        console.error("Error fetching messages", err.stack);
+        res.status(500).json({ error: "Failed to fetch messages" });
+    }
+});
+
+// Send a text message
+app.post("/messages", requireAuth, async (req, res) => {
+    const { conversation_id, content } = req.body;
+    const sender_id = req.session.user.id;
+    
+    if (!conversation_id || !content) {
+        return res.status(400).json({ error: "Missing required fields" });
+    }
+    
+    try {
+        // Verify user is part of conversation
+        const convCheck = await pool.query(
+            `SELECT * FROM conversations 
+             WHERE id = $1 AND (user1_id = $2 OR user2_id = $2);`,
+            [conversation_id, sender_id]
+        );
+        
+        if (convCheck.rows.length === 0) {
+            return res.status(403).json({ error: "Not authorized" });
+        }
+        
+        // Insert message
+        const result = await pool.query(
+            `INSERT INTO messages (conversation_id, sender_id, content, message_type)
+             VALUES ($1, $2, $3, 'text') RETURNING *;`,
+            [conversation_id, sender_id, content]
+        );
+        
+        // Update conversation's last_message_id
+        await pool.query(
+            `UPDATE conversations SET last_message_id = $1 WHERE id = $2;`,
+            [result.rows[0].id, conversation_id]
+        );
+        
+        res.json({ success: true, message: result.rows[0] });
+    } catch (err) {
+        console.error("Error sending message", err.stack);
+        res.status(500).json({ error: "Failed to send message" });
+    }
+});
+
+// Share a product
+app.post("/share", requireAuth, async (req, res) => {
+    const { conversation_id, product_id } = req.body;
+    const sender_id = req.session.user.id;
+    
+    if (!conversation_id || !product_id) {
+        return res.status(400).json({ error: "Missing required fields" });
+    }
+    
+    try {
+        // Verify user is part of conversation
+        const convCheck = await pool.query(
+            `SELECT * FROM conversations 
+             WHERE id = $1 AND (user1_id = $2 OR user2_id = $2);`,
+            [conversation_id, sender_id]
+        );
+        
+        if (convCheck.rows.length === 0) {
+            return res.status(403).json({ error: "Not authorized" });
+        }
+        
+        // Get receiver_id
+        const conversation = convCheck.rows[0];
+        const receiver_id = conversation.user1_id === sender_id 
+            ? conversation.user2_id 
+            : conversation.user1_id;
+        
+        // Get product details
+        const productResult = await pool.query(
+            `SELECT label FROM products WHERE id = $1;`,
+            [product_id]
+        );
+        
+        if (productResult.rows.length === 0) {
+            return res.status(404).json({ error: "Product not found" });
+        }
+        
+        const productLabel = productResult.rows[0].label;
+        
+        // Insert message as share type
+        const messageResult = await pool.query(
+            `INSERT INTO messages (conversation_id, sender_id, content, message_type)
+             VALUES ($1, $2, $3, 'share') RETURNING *;`,
+            [conversation_id, sender_id, `Shared: ${productLabel}`]
+        );
+        
+        const message_id = messageResult.rows[0].id;
+        
+        // Insert into shares table
+        await pool.query(
+            `INSERT INTO shares (id, sender_id, receiver_id, product_id)
+             VALUES ($1, $2, $3, $4);`,
+            [message_id, sender_id, receiver_id, product_id]
+        );
+        
+        // Update conversation's last_message_id
+        await pool.query(
+            `UPDATE conversations SET last_message_id = $1 WHERE id = $2;`,
+            [message_id, conversation_id]
+        );
+        
+        res.json({ success: true, message: messageResult.rows[0] });
+    } catch (err) {
+        console.error("Error sharing product", err.stack);
+        res.status(500).json({ error: "Failed to share product" });
+    }
+});
+
+// Likes endpoints
 app.post("/like", requireAuth, async (req, res) => {
-    if (!req.body.user_id || !req.body.product_id) {
-        return res.status(400).json({ error: "Missing user_id or product_id" });
+    if (!req.body.product_id) {
+        return res.status(400).json({ error: "Missing product_id" });
     }
     try {
         const result = await pool.query(
             "INSERT INTO likes (user_id, product_id) VALUES ($1, $2) RETURNING *;",
-            [req.body.user_id, req.body.product_id]
+            [req.session.user.id, req.body.product_id]
         );
-        console.log("Like added:", result.rows[0]);
         res.json({ success: true, like: result.rows[0] });
     } catch (err) {
         console.error("Error adding like", err.stack);
@@ -152,72 +357,21 @@ app.post("/like", requireAuth, async (req, res) => {
 });
 
 app.delete("/like", requireAuth, async (req, res) => {
-    if (!req.body.user_id || !req.body.product_id) {
-        return res.status(400).json({ error: "Missing user_id or product_id" });
+    if (!req.body.product_id) {
+        return res.status(400).json({ error: "Missing product_id" });
     }
     try {
         const result = await pool.query(
             "DELETE FROM likes WHERE user_id = $1 AND product_id = $2 RETURNING *;",
-            [req.body.user_id, req.body.product_id]
+            [req.session.user.id, req.body.product_id]
         );
-        console.log("Like removed:", result.rows[0]);
-        // if no rows are returned, the like was not found
         if (!result.rows.length) {
             return res.status(404).json({ error: "Like not found" });
-        } else {
-            return res.json({ success: true, like: result.rows[0] });
         }
+        res.json({ success: true, like: result.rows[0] });
     } catch (err) {
         console.error("Error removing like", err.stack);
         res.status(500).json({ error: "Failed to remove like" });
-    }
-});
-
-app.post("/cart", requireAuth, async (req, res) => {
-    if (!req.body.user_id || !req.body.product_id || !req.body.quantity) {
-        return res.status(400).json({ error: "Missing user_id, product_id, or quantity" });
-    }
-    try {
-        const result = await pool.query(
-            "INSERT INTO cart (user_id, product_id, quantity) VALUES ($1, $2, $3) RETURNING *;",
-            [req.body.user_id, req.body.product_id, req.body.quantity]
-        );
-        console.log("Item added to cart:", result.rows[0]);
-        res.json({ success: true, cart_item: result.rows[0] });
-    } catch (err) {
-        console.error("Error adding item to cart", err.stack);
-        res.status(500).json({ error: "Failed to add item to cart" });
-    }
-});
-
-app.get("/cart", requireAuth, async (req, res) => {
-    if (!req.query.user_id) {
-        return res.status(400).json({ error: "Missing user_id" });
-    }
-    try {
-        const result = await pool.query("SELECT * FROM cart WHERE user_id = $1;", [req.query.user_id]);
-        console.log("Cart items fetched:", result.rows);
-        res.json({ success: true, cart_items: result.rows });
-    } catch (err) {
-        console.error("Error fetching cart items", err.stack);
-        res.status(500).json({ error: "Failed to fetch cart items" });
-    }
-});
-
-app.delete("/cart", requireAuth, async (req, res) => {
-    if (!req.body.user_id || !req.body.product_id) {
-        return res.status(400).json({ error: "Missing user_id or product_id" });
-    }
-    try {
-        const result = await pool.query(
-            "DELETE FROM cart WHERE user_id = $1 AND product_id = $2 RETURNING *;",
-            [req.body.user_id, req.body.product_id]
-        );
-        console.log("Item removed from cart:", result.rows[0]);
-        res.json({ success: true, cart_item: result.rows[0] });
-    } catch (err) {
-        console.error("Error removing item from cart", err.stack);
-        res.status(500).json({ error: "Failed to remove item from cart" });
     }
 });
 

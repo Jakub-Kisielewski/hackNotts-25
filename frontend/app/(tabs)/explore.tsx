@@ -8,6 +8,7 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  ActivityIndicator,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
@@ -20,47 +21,51 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 
 type Conversation = {
   id: number;
-  username: string;
-  avatar: string;
-  lastMessage: string;
-  timestamp: string;
-  unread: boolean;
+  user1_id: number;
+  user2_id: number;
+  user1_name: string;
+  user2_name: string;
+  last_message_content: string;
+  last_message_type: string;
+  last_message_sender_id: number;
 };
 
 type State = {
   conversations: Conversation[];
   expandedId: number | null;
+  loading: boolean;
+  currentUserId: number | null;
 };
 
 export default class Explore extends Component<{}, State> {
   state: State = {
-    conversations: [
-      {
-        id: 1,
-        username: "Alex",
-        avatar: "",
-        lastMessage: "Can you see my new outfit?",
-        timestamp: "2h",
-        unread: true,
-      },
-      {
-        id: 2,
-        username: "Emma",
-        avatar: "",
-        lastMessage: "Love the jacket!",
-        timestamp: "1d",
-        unread: false,
-      },
-      {
-        id: 3,
-        username: "Ryan",
-        avatar: "",
-        lastMessage: "Check this look 😎",
-        timestamp: "3d",
-        unread: true,
-      },
-    ],
+    conversations: [],
     expandedId: null,
+    loading: true,
+    currentUserId: null,
+  };
+
+  async componentDidMount() {
+    this.fetchConversations();
+  }
+
+  fetchConversations = async () => {
+    try {
+      const response = await fetch('http://localhost:3001/conversations', {
+        credentials: 'include',
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        this.setState({ 
+          conversations: data.conversations,
+          loading: false,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching conversations:', error);
+      this.setState({ loading: false });
+    }
   };
 
   handlePress = (item: Conversation) => {
@@ -73,22 +78,18 @@ export default class Explore extends Component<{}, State> {
   };
 
   openConversation = (conversation: Conversation) => {
-    // Navigate using Expo Router
+    // Determine the other user's name
+    const otherUserName = conversation.user1_name || conversation.user2_name;
+    
     router.push({
-      pathname: "/conversation",
+      pathname: "/(tabs)/conversation",
       params: {
-        username: conversation.username,
-        lastMessage: conversation.lastMessage,
+        conversationId: conversation.id.toString(),
+        username: otherUserName,
       },
     });
 
-    // Mark as read
-    this.setState((prev) => ({
-      conversations: prev.conversations.map((c) =>
-        c.id === conversation.id ? { ...c, unread: false } : c
-      ),
-      expandedId: null,
-    }));
+    this.setState({ expandedId: null });
   };
 
   deleteConversation = (id: number) => {
@@ -103,43 +104,60 @@ export default class Explore extends Component<{}, State> {
     </TouchableOpacity>
   );
 
-  renderConversation = ({ item }: { item: Conversation }) => (
-    <Swipeable renderRightActions={() => this.renderRightActions(item.id)}>
-      <TouchableOpacity
-        style={styles.row}
-        onPress={() => this.handlePress(item)} // tap → expand → tap again → navigate
-      >
-        {/* User Icon */}
-        <View style={[styles.userIconContainer, { marginRight: 20 }]}>
-          <FontAwesome name="user" size={35} color="#fff" />
-        </View>
+  getDisplayMessage = (conv: Conversation) => {
+    if (conv.last_message_type === 'share') {
+      return '📦 Shared a product';
+    }
+    return conv.last_message_content || 'No messages yet';
+  };
 
-        {/* Text container */}
-        <View style={styles.textContainer}>
-          <View style={styles.rowTop}>
-            <Text style={styles.username}>{item.username}</Text>
-            <Text style={styles.timestamp}>{item.timestamp}</Text>
+  renderConversation = ({ item }: { item: Conversation }) => {
+    const displayName = item.user1_name || item.user2_name || 'Unknown User';
+    const lastMessage = this.getDisplayMessage(item);
+    
+    return (
+      <Swipeable renderRightActions={() => this.renderRightActions(item.id)}>
+        <TouchableOpacity
+          style={styles.row}
+          onPress={() => this.handlePress(item)}
+        >
+          {/* User Icon */}
+          <View style={[styles.userIconContainer, { marginRight: 20 }]}>
+            <FontAwesome name="user" size={35} color="#fff" />
           </View>
 
-          {/* Expandable Message */}
-          <ExpandableMessage
-            text={item.lastMessage}
-            collapsedLines={1}
-            textStyle={{ color: item.unread ? "#fff" : "#ccc" }}
-          />
+          {/* Text container */}
+          <View style={styles.textContainer}>
+            <View style={styles.rowTop}>
+              <Text style={styles.username}>{displayName}</Text>
+            </View>
 
-          {this.state.expandedId === item.id && (
-            <Text style={styles.expandHint}>Tap again to open full chat</Text>
-          )}
-        </View>
+            {/* Expandable Message */}
+            <ExpandableMessage
+              text={lastMessage}
+              collapsedLines={1}
+              textStyle={{ color: '#ccc' }}
+            />
 
-        {/* Unread dot */}
-        {item.unread && <View style={styles.unreadDot} />}
-      </TouchableOpacity>
-    </Swipeable>
-  );
+            {this.state.expandedId === item.id && (
+              <Text style={styles.expandHint}>Tap again to open full chat</Text>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Swipeable>
+    );
+  };
 
   render() {
+    if (this.state.loading) {
+      return (
+        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={{ color: '#fff', marginTop: 10 }}>Loading conversations...</Text>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.container}>
         {/* Top bar */}
@@ -154,12 +172,21 @@ export default class Explore extends Component<{}, State> {
         </View>
 
         {/* Conversations List */}
-        <FlatList
-          data={this.state.conversations}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={this.renderConversation}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
+        {this.state.conversations.length === 0 ? (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ color: '#888', fontSize: 16 }}>No conversations yet</Text>
+            <Text style={{ color: '#666', fontSize: 14, marginTop: 8 }}>
+              Share a product to start chatting!
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={this.state.conversations}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={this.renderConversation}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+          />
+        )}
       </View>
     );
   }
@@ -188,13 +215,6 @@ const styles = StyleSheet.create({
   rowTop: { flexDirection: "row", justifyContent: "space-between", marginBottom: 2 },
   username: { fontWeight: "600", fontSize: 16, color: "#fff" },
   timestamp: { fontSize: 12, color: "#fff" },
-  unreadDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#0084ff",
-    marginLeft: 6,
-  },
   deleteButton: {
     backgroundColor: "red",
     justifyContent: "center",

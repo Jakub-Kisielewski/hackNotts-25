@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, FlatList, Dimensions, Pressable, Image, ActivityIndicator, ScrollView } from 'react-native';
+import { View, StyleSheet, FlatList, Dimensions, Pressable, Image, ActivityIndicator, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import { faHeart as faHeartRegular } from '@fortawesome/free-regular-svg-icons';
-import { faHeart as faHeartSolid } from '@fortawesome/free-solid-svg-icons';
+import { faHeart as faHeartSolid, faShare as faShareNodes } from '@fortawesome/free-solid-svg-icons';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useAuth } from '@/contexts/auth-context';
@@ -88,10 +88,76 @@ const ImageCarousel = ({ images }: { images: string[] }) => {
 
 const Page = ({ product }: { product: Product }) => {
   const [liked, setLiked] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [users, setUsers] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+
   const toggleHeart = () => setLiked(!liked);
 
-  // Safely convert price to number and format it
+  const openShareModal = async () => {
+    setShowShareModal(true);
+    setLoading(true);
+    
+    try {
+      // Fetch users
+      const usersRes = await fetch('http://localhost:3001/users', {
+        credentials: 'include',
+      });
+      const usersData = await usersRes.json();
+      
+      // Fetch existing conversations
+      const convsRes = await fetch('http://localhost:3001/conversations', {
+        credentials: 'include',
+      });
+      const convsData = await convsRes.json();
+      
+      if (usersData.success) setUsers(usersData.users);
+      if (convsData.success) setConversations(convsData.conversations);
+    } catch (err) {
+      console.error('Error loading share data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const shareProduct = async (userId: number) => {
+    try {
+      // Get or create conversation
+      const convRes = await fetch('http://localhost:3001/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ other_user_id: userId }),
+      });
+      const convData = await convRes.json();
+      
+      if (!convData.success) throw new Error('Failed to create conversation');
+      
+      // Share product
+      const shareRes = await fetch('http://localhost:3001/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          conversation_id: convData.conversation.id,
+          product_id: product.id,
+        }),
+      });
+      
+      const shareData = await shareRes.json();
+      
+      if (shareData.success) {
+        alert('Product shared successfully!');
+        setShowShareModal(false);
+      }
+    } catch (err) {
+      console.error('Error sharing product:', err);
+      alert('Failed to share product');
+    }
+  };
+
   const priceValue = typeof product.price === 'number' 
     ? product.price 
     : parseFloat(product.price) || 0;
@@ -100,13 +166,19 @@ const Page = ({ product }: { product: Product }) => {
     <View style={styles.page}>
       <ImageCarousel images={product.imageurls || []} />
 
-      <Pressable style={styles.heartContainer} onPress={toggleHeart}>
-        <FontAwesomeIcon
-          icon={liked ? faHeartSolid : faHeartRegular}
-          size={30}
-          color={liked ? 'red' : 'white'}
-        />
-      </Pressable>
+      <View style={styles.actionButtons}>
+        <Pressable style={styles.actionButton} onPress={toggleHeart}>
+          <FontAwesomeIcon
+            icon={liked ? faHeartSolid : faHeartRegular}
+            size={30}
+            color={liked ? 'red' : 'white'}
+          />
+        </Pressable>
+
+        <Pressable style={styles.actionButton} onPress={openShareModal}>
+          <FontAwesomeIcon icon={faShareNodes} size={30} color="white" />
+        </Pressable>
+      </View>
 
       <ThemedView style={styles.stepContainer}>
         <ThemedText type="subtitle">{product.label}</ThemedText>
@@ -119,6 +191,46 @@ const Page = ({ product }: { product: Product }) => {
           <ThemedText type="default">Tags: {product.tags.join(', ')}</ThemedText>
         )}
       </ThemedView>
+
+      <Modal
+        visible={showShareModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowShareModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ThemedText type="subtitle" style={styles.modalTitle}>
+              Share with...
+            </ThemedText>
+            
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <FlatList
+                data={users}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.userItem}
+                    onPress={() => shareProduct(item.id)}
+                  >
+                    <ThemedText>{item.name}</ThemedText>
+                    <ThemedText style={styles.userEmail}>{item.email}</ThemedText>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+            
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowShareModal(false)}
+            >
+              <ThemedText>Close</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -268,6 +380,54 @@ const styles = StyleSheet.create({
     borderWidth: 2, 
     borderRadius: 50, 
     padding: 10, 
+    paddingLeft: 11,
+  },
+  actionButtons: {
+    position: 'absolute',
+    right: 20,
+    top: '40%',
+    gap: 20,
+  },
+  actionButton: {
+    borderColor: 'white',
+    borderWidth: 2,
+    borderRadius: 50,
+    padding: 10,
     paddingLeft: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '80%',
+    maxHeight: '70%',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 20,
+  },
+  modalTitle: {
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  userItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  userEmail: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 4,
+  },
+  closeButton: {
+    marginTop: 15,
+    padding: 12,
+    backgroundColor: '#333',
+    borderRadius: 8,
+    alignItems: 'center',
   },
 });
